@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+window.onload = function() {
+  let test_type_elt = document.getElementById("test_type");
+  let student_name_elt = document.getElementById("student_name");
+  let test_date_elt = document.getElementById("test_date");
+  let section_1_key_elt = document.getElementById("section_1_key");
+  let section_2_key_elt = document.getElementById("section_2_key");
+  let section_3_key_elt = document.getElementById("section_3_key");
+  let section_4_key_elt = document.getElementById("section_4_key");
+  let section_1_answers_elt = document.getElementById("section_1_answers");
+  let section_2_answers_elt = document.getElementById("section_2_answers");
+  let section_3_answers_elt = document.getElementById("section_3_answers");
+  let section_4_answers_elt = document.getElementById("section_4_answers");
+  let generate_button_elt = document.getElementById("generate_button");
+
+  function FindErrorsInKeyAndAnswers(key, answers, test_type, section_number) {
+    if (test_type !== "sat" && test_type !== "act") {
+      return [`Invalid test type "${test_type}"`];
+    }
+    if (key.length !== answers.length) {
+      return [`Section ${section_number} key has ${key.length} questions, but student answers have ${answers.length} questions`];
+    }
+    let result = [];
+    if (test_type === "act") {
+      let expected_section_length = {
+        1: 75,
+        2: 60,
+        3: 40,
+        4: 40,
+      }[section_number];
+      if (key.length !== expected_section_length) {
+        result.push(`ACT Section ${section_number} should have ${expected_section_length} questions, but ${key.length} questions were found`);
+      }
+    }
+    for (let i = 0; i < key.length; i++) {
+      let correct_answer = key[i];
+      let student_answer = answers[i];
+      let correct_answer_is_single_letter = ["a", "b", "c", "d", "e", "f", "g", "h", "j", "k"].indexOf(correct_answer) !== -1;
+      let student_answer_is_single_letter = ["a", "b", "c", "d", "e", "f", "g", "h", "j", "k"].indexOf(student_answer) !== -1;
+      if (student_answer === "blank") {
+        continue;
+      }
+      if (correct_answer_is_single_letter && student_answer_is_single_letter) {
+        let allowable_letters;
+        if (test_type === "sat") {
+          allowable_letters = ["a", "b", "c", "d"];
+        } else if (section_number === 2) {
+          allowable_letters = (i % 2 === 0) ? ["a", "b", "c", "d", "e"] : ["f", "g", "h", "j", "k"];
+        } else {
+          allowable_letters = (i % 2 === 0) ? ["a", "b", "c", "d"] : ["f", "g", "h", "j"];
+        }
+        if (allowable_letters.indexOf(correct_answer) === -1) {
+          result.push(`Section ${section_number} answer key question ${i+1} has invalid answer "${correct_answer}"`);
+        }
+        if (allowable_letters.indexOf(student_answer) === -1) {
+          result.push(`Section ${section_number} student answers question ${i+1} has invalid answer "${student_answer}"`);
+        }
+      } else if (correct_answer_is_single_letter ^ student_answer_is_single_letter) {
+        result.push(`Section ${section_number} question ${i+1} answer key says "${correct_answer}", but student has answer "${student_answer}"`);
+      } else if (test_type === "act" || section_number < 3) {
+        result.push(`Section ${section_number} question ${i+1} answer key says "${correct_answer}", student has answer "${student_answer}", not valid for this section`);
+      } else {
+        // At this point, we know it's an SAT math write-in answer. Validation is complicated here.
+      }
+    }
+    return result;
+  }
+
+  /*
+  Returns something like:
+  [
+    [1, "a", "b"],
+    [3, "d", "g"],
+    [5, "123", "5 OR 7.5 OR 15/2"],
+  ]
+  */
+  function GetWrongAnswers(key, answers) {
+    let result = [];
+    for (let i = 0; i < key.length; i++) {
+      let possible_answers = key[i].split(",");
+      let student_answer = answers[i];
+      if (possible_answers.indexOf(student_answer) === -1) {
+        result.push([i + 1, student_answer, possible_answers.join(" OR ")]);
+      }
+    }
+    return result;
+  }
+
+  /*
+  Returns something like:
+  {
+    "overall_score": 1240,
+    "subscores": [600, 640],
+    "total_questions": [27, 27, 22, 22];
+    "section_1_incorrect": [[1, "a", "b"]],  // "a" is the student's answer, "b" is the correct answer
+    "section_2_incorrect": [[1, "a", "b"]],  // "a" is the student's answer, "b" is the correct answer
+    "section_3_incorrect": [[1, "a", "b"]],  // "a" is the student's answer, "b" is the correct answer
+    "section_4_incorrect": [[1, "a", "b"]],  // "a" is the student's answer, "b" is the correct answer
+  }
+  */
+  function ScoreTest(section_keys, section_answers, test_type) {
+    section_1_incorrect = GetWrongAnswers(section_keys[0], section_answers[0]);
+    section_2_incorrect = GetWrongAnswers(section_keys[1], section_answers[1]);
+    section_3_incorrect = GetWrongAnswers(section_keys[2], section_answers[2]);
+    section_4_incorrect = GetWrongAnswers(section_keys[3], section_answers[3]);
+    let subscores;
+    let overall_score;
+    if (test_type === "act") {
+      let act_score_table = {
+        "english": [1, 1, 2, 3, 4, 4, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 12, 13, 13, 14, 14, 14, 15, 15, 15, 16, 16, 16, 17, 17, 18, 18, 19, 19, 20, 20, 20, 21, 21, 21, 22, 22, 22, 23, 23, 23, 24, 24, 24, 25, 25, 25, 26, 26, 27, 27, 28, 29, 29, 30, 31, 32, 33, 34, 35, 35, 35, 36, 36 ],
+        "math": [1, 4, 6, 8, 10, 11, 11, 12, 13, 13, 14, 14, 14, 15, 15, 15, 16, 16, 16, 17, 17, 17, 18, 18, 18, 19, 19, 20, 20, 21, 21, 22, 23, 23, 24, 24, 24, 25, 25, 26, 26, 26, 27, 27, 27, 28, 28, 29, 29, 30, 30, 31, 31, 32, 33, 34, 34, 35, 35, 36, 36 ],
+        "reading": [ 1, 2, 4, 5, 6, 8, 9, 10, 11, 11, 12, 13, 14, 14, 15, 16, 17, 17, 18, 19, 20, 20, 21, 22, 22, 23, 24, 24, 25, 26, 28, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36 ],
+        "science": [ 1, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 14, 15, 16, 17, 17, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 26, 26, 27, 28, 30, 31, 33, 34, 36 ],
+      };
+      subscores = [
+        act_score_table["english"][75 - section_1_incorrect.length],
+        act_score_table["math"][60 - section_2_incorrect.length],
+        act_score_table["reading"][40 - section_3_incorrect.length],
+        act_score_table["science"][40 - section_4_incorrect.length],
+      ];
+      overall_score = Math.round((subscores[0] + subscores[1] + subscores[2] + subscores[3]) / 4);
+    } else {
+      let SCALE_FACTOR = 0.25;
+      let score_table = [ 200, 200, 210, 230, 240, 260, 280, 290, 310, 320, 330, 340, 360, 370, 380, 390, 410, 420, 430, 440, 450, 460, 470, 480, 480, 490, 500, 510, 520, 520, 530, 540, 550, 560, 560, 570, 580, 590, 600, 600, 610, 620, 630, 640, 650, 660, 670, 670, 680, 690, 700, 710, 730, 740, 750, 760, 780, 790, 800, ];
+
+      let math_percent_correct = ((section_keys[2].length - section_3_incorrect.length) + (section_keys[3].length - section_4_incorrect.length)) / (section_keys[2].length + section_keys[3].length);
+      let math_percent_wrong = 1 - math_percent_correct;
+      let math_adjusted_percent = math_percent_correct + math_percent_wrong * SCALE_FACTOR;
+
+      let verbal_percent_correct = ((section_keys[0].length - section_1_incorrect.length) + (section_keys[1].length - section_2_incorrect.length)) / (section_keys[0].length + section_keys[1].length);
+      let verbal_percent_wrong = 1 - verbal_percent_correct;
+      let verbal_adjusted_percent = verbal_percent_correct + verbal_percent_wrong * SCALE_FACTOR;
+
+      let math_index = Math.ceil(math_adjusted_percent * score_table.length);
+      if (math_index === score_table.length) {
+        math_index--;
+      }
+      let verbal_index = Math.ceil(verbal_adjusted_percent * score_table.length);
+      if (verbal_index === score_table.length) {
+        verbal_index--;
+      }
+      subscores = [score_table[verbal_index], score_table[math_index]];
+      overall_score = subscores[0] + subscores[1];
+    }
+    return {
+      "overall_score": overall_score,
+      "subscores": subscores,
+      "total_questions": [section_keys[0].length, section_keys[1].length, section_keys[2].length, section_keys[3].length],
+      "section_1_incorrect": section_1_incorrect,
+      "section_2_incorrect": section_2_incorrect,
+      "section_3_incorrect": section_3_incorrect,
+      "section_4_incorrect": section_4_incorrect,
+    };
+  }
+
+  function MakeSectionScoreDivs(section_names, subscores, max_score) {
+    let result = "";
+    for (let i = 0; i < section_names.length; i++) {
+      result += `
+<div class="sectionScore">
+  ${section_names[i]} Score: ${subscores[i]}
+  <span class="outOf"> / ${max_score}</span>
+</div>
+      `;
+    }
+    return result;
+  }
+
+  function MakeIncorrectTableRows(incorrect_answers) {
+    let result = "";
+    for (const [question_number, student_answer, correct_answer] of incorrect_answers) {
+      result += `<tr><td align="center">${question_number}</td><td align="center">${student_answer}</td><td align="center">${correct_answer}</td></tr>`;
+    }
+    return result;
+  }
+
+  // Input to this function should come from ScoreTest()
+  function GenerateHtml(test_scores, test_type) {
+    let overall_max_score;
+    let category_names;
+    let section_names;
+    let max_section_score;
+    if (test_type === "sat") {
+      overall_max_score = 1600;
+      category_names = ["Reading &amp; Writing", "Math"];
+      section_names = ["Verbal Module 1", "Verbal Module 2", "Math Module 1", "Math Module 2"];
+      max_section_score = 800;
+    } else {
+      overall_max_score = 36;
+      category_names = ["English", "Math", "Reading", "Science"];
+      section_names = category_names;
+      max_section_score = 36
+    }
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+<title>${student_name_elt.value}</title>
+<meta charset="utf-8">
+<style>
+@page { size: letter; }
+body {
+  background: white;
+}
+* {
+  font-family: 'Roboto Slab', serif;
+  border-radius: 5px;
+}
+
+#nameAndInfo{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 75px;
+  padding-right: 50px;
+  padding-left: 50px;
+  padding-top: 10px;
+}
+
+#bigScore{
+  border: #bfbfbf;
+  display: flex;
+  border-width: thin;
+  border-style: solid;
+  background: #daf7ff;
+  justify-content: space-around;
+  align-items: center;
+  height: 125px;
+  margin-bottom: 30px;
+}
+
+#totalScoreLabel{
+  font-size: 2em;
+}
+#totalScore {
+  font-size: 2.3em;
+}
+.sectionScore{
+  font-size: 1.3em;
+}
+
+.subjectSection{
+  height: 100px;
+  border: #bfbfbf;
+  border-width: thin;
+  border-style: solid;
+  background: #daf7ff;
+  margin-top: 15px;
+  margin-bottom: 15px;
+}
+.incorrect.subjectSection{
+  height:auto;
+  padding-bottom:15px;
+}
+
+table {
+  width: 100%;
+}
+th {
+  font-size: 1.5em;
+}
+
+.sectionLabel{
+  font-size: 1em;
+  padding: 5px;
+  background: gainsboro;
+  width: max-content;
+  border-bottom-left-radius: 0px;
+  border-top-right-radius: 0px;
+}
+
+.outOf {
+    font-size: 0.5em;
+}
+</style>
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="nameAndInfo">
+  <span>
+    ${student_name_elt.value}
+  </span>
+  <img src="https://jacksontestsim.com/wp-content/themes/mountainlakesat/images/logo.png" style="width:200px; filter:invert(1)"/>
+  <span>
+    ${test_date_elt.value}
+  </span>
+</div>
+<div id="bigScore">
+  <div style="display: flex;flex-direction: column; align-items:center">
+    <div id="totalScoreLabel">
+      Total Score:
+    </div>
+    <div style="font-size:2.3em;">
+      ${test_scores.overall_score}
+      <span class="outOf"> / ${overall_max_score}</span>
+    </div>
+  </div>
+  <div id="sectionScores">
+    ${MakeSectionScoreDivs(category_names, test_scores.subscores, max_section_score)}
+  </div>
+</div>
+<div class="subjectSection">
+  <div class="sectionLabel">Section 1 (${section_names[0]})</div>
+  <table>
+    <tr>
+      <th>
+        ${test_scores.total_questions[0]}
+      </th>
+      <th>
+        ${test_scores.total_questions[0] - test_scores.section_1_incorrect.length}
+      </th>
+      <th>
+        ${test_scores.section_1_incorrect.length}
+      </th>
+    </tr>
+    <tr>
+      <td align="center">Total Questions</td>
+      <td align="center">Correct Answers</td>
+      <td align="center">Incorrect Answers</td>
+    </tr>
+  </table>
+</div>
+<div class="subjectSection">
+  <div class="sectionLabel">Section 2 (${section_names[1]})</div>
+  <table>
+    <tr>
+      <th>
+        ${test_scores.total_questions[1]}
+      </th>
+      <th>
+        ${test_scores.total_questions[1] - test_scores.section_2_incorrect.length}
+      </th>
+      <th>
+        ${test_scores.section_2_incorrect.length}
+      </th>
+    </tr>
+    <tr>
+      <td align="center">Total Questions</td>
+      <td align="center">Correct Answers</td>
+      <td align="center">Incorrect Answers</td>
+    </tr>
+  </table>
+</div>
+<div class="subjectSection">
+  <div class="sectionLabel">Section 3 (${section_names[2]})</div>
+  <table>
+    <tr>
+      <th>
+        ${test_scores.total_questions[2]}
+      </th>
+      <th>
+        ${test_scores.total_questions[2] - test_scores.section_3_incorrect.length}
+      </th>
+      <th>
+        ${test_scores.section_3_incorrect.length}
+      </th>
+    </tr>
+    <tr>
+      <td align="center">Total Questions</td>
+      <td align="center">Correct Answers</td>
+      <td align="center">Incorrect Answers</td>
+    </tr>
+  </table>
+</div>
+<div class="subjectSection">
+  <div class="sectionLabel">Section 4 (${section_names[3]})</div>
+  <table>
+    <tr>
+      <th>
+        ${test_scores.total_questions[3]}
+      </th>
+      <th>
+        ${test_scores.total_questions[3] - test_scores.section_4_incorrect.length}
+      </th>
+      <th>
+        ${test_scores.section_4_incorrect.length}
+      </th>
+    </tr>
+    <tr>
+      <td align="center">Total Questions</td>
+      <td align="center">Correct Answers</td>
+      <td align="center">Incorrect Answers</td>
+    </tr>
+  </table>
+</div>
+<div class="incorrect subjectSection">
+  <div class="sectionLabel">Section 1 Incorrect Answers</div>
+  <table>
+    <tr>
+      <td align="center">Question</td>
+      <td align="center">Your Answer</td>
+      <td align="center">Correct Answer</td>
+    </tr>
+    ${MakeIncorrectTableRows(test_scores.section_1_incorrect)}
+  </table>
+</div>
+<div class="incorrect subjectSection">
+  <div class="sectionLabel">Section 2 Incorrect Answers</div>
+  <table>
+    <tr>
+      <td align="center">Question</td>
+      <td align="center">Your Answer</td>
+      <td align="center">Correct Answer</td>
+    </tr>
+    ${MakeIncorrectTableRows(test_scores.section_2_incorrect)}
+  </table>
+</div>
+<div class="incorrect subjectSection">
+  <div class="sectionLabel">Section 3 Incorrect Answers</div>
+  <table>
+    <tr>
+      <td align="center">Question</td>
+      <td align="center">Your Answer</td>
+      <td align="center">Correct Answer</td>
+    </tr>
+    ${MakeIncorrectTableRows(test_scores.section_3_incorrect)}
+  </table>
+</div>
+<div class="incorrect subjectSection">
+  <div class="sectionLabel">Section 4 Incorrect Answers</div>
+  <table>
+    <tr>
+      <td align="center">Question</td>
+      <td align="center">Your Answer</td>
+      <td align="center">Correct Answer</td>
+    </tr>
+    ${MakeIncorrectTableRows(test_scores.section_4_incorrect)}
+  </table>
+</div>
+</body>
+</html>
+`;
+  }
+
+  function GenerateScoreReport() {
+    let test_type = test_type_elt.value;
+    let section_1_key = section_1_key_elt.value.split("\n").filter(line => line.length > 0).map(line => line.toLowerCase());
+    let section_2_key = section_2_key_elt.value.split("\n").filter(line => line.length > 0).map(line => line.toLowerCase());
+    let section_3_key = section_3_key_elt.value.split("\n").filter(line => line.length > 0).map(line => line.toLowerCase());
+    let section_4_key = section_4_key_elt.value.split("\n").filter(line => line.length > 0).map(line => line.toLowerCase());
+    let section_1_answers = section_1_answers_elt.value.split("\n").filter(line => line.length > 0).map(line => line.toLowerCase());
+    let section_2_answers = section_2_answers_elt.value.split("\n").filter(line => line.length > 0).map(line => line.toLowerCase());
+    let section_3_answers = section_3_answers_elt.value.split("\n").filter(line => line.length > 0).map(line => line.toLowerCase());
+    let section_4_answers = section_4_answers_elt.value.split("\n").filter(line => line.length > 0).map(line => line.toLowerCase());
+
+    let errors = [];
+    errors = errors.concat(FindErrorsInKeyAndAnswers(section_1_key, section_1_answers, test_type, 1));
+    errors = errors.concat(FindErrorsInKeyAndAnswers(section_2_key, section_2_answers, test_type, 2));
+    errors = errors.concat(FindErrorsInKeyAndAnswers(section_3_key, section_3_answers, test_type, 3));
+    errors = errors.concat(FindErrorsInKeyAndAnswers(section_4_key, section_4_answers, test_type, 4));
+    if (errors.length !== 0) {
+      alert("Cannot generate score report because of these errors:\n" + errors.join("\n"));
+      return;
+    }
+
+    let test_scores = ScoreTest(
+      [section_1_key, section_2_key, section_3_key, section_4_key],
+      [section_1_answers, section_2_answers, section_3_answers, section_4_answers],
+      test_type
+    );
+    let report_html = GenerateHtml(test_scores, test_type);
+    window.open("", "_blank").document.body.innerHTML = report_html;
+  }
+  generate_button_elt.onclick = GenerateScoreReport;
+}
+</script>
+</head>
+<body>
+
+<div>
+<h3>Info:</h3>
+<p>
+If a student didn't answer a question, enter <code>blank</code> for that line.
+</p>
+
+<p>
+SAT math sections have some questions that are not multiple choice, and can have multiple correct solutions.
+For these questions, the answer key should have <b>every possible correct answer</b>, separated by commas.
+<br/>
+For example, if the correct answers are 5 and 0.25, the answer key should say <code>5,0.25,.25,1/4</code>, since
+these are all the possible ways that someone could have answered the question. The order of the answers doesn't matter,
+e.g. <code>.25,0.25,1/4,5</code> would work as well.
+</p>
+
+<p>
+When printing the score report as a PDF, make sure you check "Background graphics" and uncheck "Headers and footers" in the "More settings" panel.
+</p>
+</div>
+
+<div>Test Type</div>
+<select id="test_type">
+  <option value="sat">SAT</option>
+  <option value="act">ACT</option>
+</select>
+
+<div>Student Name</div>
+<input id="student_name"></input>
+<div>Test Date</div>
+<input id="test_date"></input>
+
+<div>Section 1 Answer Key</div>
+<textarea id="section_1_key"></textarea>
+<div>Section 2 Answer Key</div>
+<textarea id="section_2_key"></textarea>
+<div>Section 3 Answer Key</div>
+<textarea id="section_3_key"></textarea>
+<div>Section 4 Answer Key</div>
+<textarea id="section_4_key"></textarea>
+
+<div>Section 1 Student Answers</div>
+<textarea id="section_1_answers"></textarea>
+<div>Section 2 Student Answers</div>
+<textarea id="section_2_answers"></textarea>
+<div>Section 3 Student Answers</div>
+<textarea id="section_3_answers"></textarea>
+<div>Section 4 Student Answers</div>
+<textarea id="section_4_answers"></textarea>
+
+<div>
+<button id="generate_button">Generate Score Report</button>
+</div>
+</body>
+</html>
