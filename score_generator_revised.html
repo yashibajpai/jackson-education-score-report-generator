@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
+<!-- added pdf.js library for pdf parsing -->  
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script>
 window.onload = function() {
   let test_type_elt = document.getElementById("test_type");
@@ -15,6 +17,33 @@ window.onload = function() {
   let section_3_answers_elt = document.getElementById("section_3_answers");
   let section_4_answers_elt = document.getElementById("section_4_answers");
   let generate_button_elt = document.getElementById("generate_button");
+  let answer_var = document.getElementById("answer_key_pdf"); // file input element for uploading answer key
+
+  /* handles the process of uploading, reading, and extracting the text from the pdf */
+  answer_var.addEventListener("change", function(event) { // adds an event listener to the file input to handle uploads
+    const file = event.target.files[0]; // gets the first file from the uploaded pdf - usually the files come in one page, but just in case i'll be programming to support multiple
+    if (file) { // checks if file was uploaded
+      const reader = new FileReader(); // creates object to read content
+      reader.onload = async function () { // defines event for reader that is triggered after file is read
+        const typeArr = new Uint8Array(reader.result); // converts file's content into typed array format for PDF.js
+        const pdf = await pdfjsLib.getDocument(typeARR).promise; // uses PDF.js to load pdf from typed array
+        let allText = ""; // stores extracted text from PDF
+        for(let i = 0; i < pdf.numPages; i++){ // loops through each page of the pdf
+          const page = await pdf.getPage(i + 1); // gets current page
+          const content = await page.getTextContent(); // extracts the text content from the page
+          const pageText = textContent.items.map(item => item.str).join(" "); // combins all the items into a single string
+          allText += pageText + "\n";
+        }
+        populateAnswerKeys(allText); // calls function to parse extracted text and populate the text areas for the answer key 
+      };
+      reader.readAsArrayBuffer(file); // reads file content as arraybuffer for pdf.js formatting
+    }
+  });
+
+  /* function to parse extracted text and populate the text areas for the answer key */
+  populateAnswerKeys(text){ // coding tomorrow
+
+  }
 
   function FindErrorsInKeyAndAnswers(key, answers, test_type, section_number) {
     if (test_type !== "sat" && test_type !== "act") {
@@ -501,6 +530,10 @@ When printing the score report as a PDF, make sure you check "Background graphic
 <input id="student_name"></input>
 <div>Test Date</div>
 <input id="test_date"></input>
+
+<!-- added file input for uploading pdf of answer key -->
+<div> Upload Answer Key (PDF) </div>
+<input type="file" id="answer_key_pdf" accept="application/pdf" />
 
 <div>Section 1 Answer Key</div>
 <textarea id="section_1_key"></textarea>
