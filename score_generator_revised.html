@@ -41,8 +41,36 @@ window.onload = function() {
   });
 
   /* function to parse extracted text and populate the text areas for the answer key */
-  populateAnswerKeys(text){ // coding tomorrow
+  function populateAnswerKeys(text){ 
+  const sections = ["ENGLISH", "MATH", "READING", "SCIENCE"]; // sections to look for in the text
+  const keyFields = [section_1_key_elt, section_2_key_elt, section_3_key_elt, section_4_key_elt]; // links each section to its corresponding answer key
+    sections.forEach((section, index) => { // loops through each section and its index
+    const regex = new RegExp(`${section}\\s*([A-Z\\s]+)`, "g"); // creates regular expression to match the section and its answers
+    /*
+    if section = "ENGLISH" -> ENGLISH\s*([A-Z\\s]+)
+    \\s matches for whitespace
+    ([A-Z\\s]+ captures sequence of key ex: A B C D E or F G H J K
+    */
+    const match = regex.exec(text); // executes regex to find section in answer key text
 
+      if(match && keyFields[index]){ // populates answer key if match & corresponding field exist
+        keyFields[index].value = match[1].trim().replace(/\s+/g, "\n"); // sets the field's value to the extracted answers, formatted line by line
+        /* 
+        for text box population turns "A B C D E F G " to 
+        A
+        B
+        C
+        D
+        E
+        F
+        G
+        */
+      }
+    });
+  }
+
+  generate_button_elt.onclick = function() { // adds event click to the generate score report button
+    alert("generate report functionality triggered"); // triggers function to generate report
   }
 
   function FindErrorsInKeyAndAnswers(key, answers, test_type, section_number) {
